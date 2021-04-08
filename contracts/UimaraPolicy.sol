@@ -7,7 +7,7 @@ import "./lib/math/UInt256Lib.sol";
 
 import "./lib/Ownable.sol";
 
-interface IUFragments {
+interface IUimara {
     function totalSupply() external view returns (uint256);
 
     function rebase(uint256 epoch, int256 supplyDelta) external returns (uint256);
@@ -18,15 +18,15 @@ interface IOracle {
 }
 
 /**
- * @title uFragments Monetary Supply Policy
- * @dev This is an implementation of the uFragments Ideal Money protocol.
- *      uFragments operates symmetrically on expansion and contraction. It will both split and
+ * @title Uimara Monetary Supply Policy
+ * @dev This is an implementation of the Uimara Ideal Money protocol.
+ *      Uimara operates symmetrically on expansion and contraction. It will both split and
  *      combine coins to maintain a stable unit price.
  *
- *      This component regulates the token supply of the uFragments ERC20 token in response to
+ *      This component regulates the token supply of the Uimara ERC20 token in response to
  *      market oracles.
  */
-contract UFragmentsPolicy is Ownable {
+contract UimaraPolicy is Ownable {
     using SafeMath for uint256;
     using SafeMathInt for int256;
     using UInt256Lib for uint256;
@@ -39,7 +39,7 @@ contract UFragmentsPolicy is Ownable {
         uint256 timestampSec
     );
 
-    IUFragments public uFrags;
+    IUimara public uFrags;
 
     // Provides the current CPI, as an 18 decimal fixed point number.
     IOracle public cpiOracle;
@@ -237,7 +237,7 @@ contract UFragmentsPolicy is Ownable {
      */
     function initialize(
         address owner_,
-        IUFragments uFrags_,
+        IUimara uFrags_,
         uint256 baseCpi_
     ) public initializer {
         Ownable.initialize(owner_);

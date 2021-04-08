@@ -12,16 +12,16 @@ contract Uimara is ERC20Detailed, Ownable {
     // PLEASE READ BEFORE CHANGING ANY ACCOUNTING OR MATH
     // Anytime there is division, there is a risk of numerical instability from rounding errors. In
     // order to minimize this risk, we adhere to the following guidelines:
-    // 1) The conversion rate adopted is the number of gons that equals 1 fragment.
+    // 1) The conversion rate adopted is the number of gons that equals 1 Uimara.
     //    The inverse rate must not be used--TOTAL_GONS is always the numerator and _totalSupply is
-    //    always the denominator. (i.e. If you want to convert gons to fragments instead of
+    //    always the denominator. (i.e. If you want to convert gons to Uimara instead of
     //    multiplying by the inverse rate, you should divide by the normal rate)
-    // 2) Gon balances converted into Fragments are always rounded down (truncated).
+    // 2) Gon balances converted into Uimara are always rounded down (truncated).
     //
     // We make the following guarantees:
-    // - If address 'A' transfers x Fragments to address 'B'. A's resulting external balance will
-    //   be decreased by precisely x Fragments, and B's external balance will be precisely
-    //   increased by x Fragments.
+    // - If address 'A' transfers x Uimara to address 'B'. A's resulting external balance will
+    //   be decreased by precisely x Uimara, and B's external balance will be precisely
+    //   increased by x Uimara.
     //
     // We do not guarantee that the sum of all balances equals the result of calling totalSupply().
     // This is because, for any conversion function 'f()' that has non-zero rounding error,
@@ -51,22 +51,22 @@ contract Uimara is ERC20Detailed, Ownable {
 
     uint256 private constant DECIMALS = 9;
     uint256 private constant MAX_UINT256 = type(uint256).max;
-    uint256 private constant INITIAL_FRAGMENTS_SUPPLY = 50 * 10**6 * 10**DECIMALS;
+    uint256 private constant INITIAL_UIMARA_SUPPLY = 50 * 10**6 * 10**DECIMALS;
 
-    // TOTAL_GONS is a multiple of INITIAL_FRAGMENTS_SUPPLY so that _gonsPerFragment is an integer.
+    // TOTAL_GONS is a multiple of INITIAL_UIMARA_SUPPLY so that _gonsPerUimara is an integer.
     // Use the highest value that fits in a uint256 for max granularity.
-    uint256 private constant TOTAL_GONS = MAX_UINT256 - (MAX_UINT256 % INITIAL_FRAGMENTS_SUPPLY);
+    uint256 private constant TOTAL_GONS = MAX_UINT256 - (MAX_UINT256 % INITIAL_UIMARA_SUPPLY);
 
     // MAX_SUPPLY = maximum integer < (sqrt(4*TOTAL_GONS + 1) - 1) / 2
     uint256 private constant MAX_SUPPLY = type(uint128).max; // (2^128) - 1
 
     uint256 private _totalSupply;
-    uint256 private _gonsPerFragment;
+    uint256 private _gonsPerUimara;
     mapping(address => uint256) private _gonBalances;
 
-    // This is denominated in Fragments, because the gons-fragments conversion might change before
+    // This is denominated in Uimara, because the gons-uimara conversion might change before
     // it's fully paid.
-    mapping(address => mapping(address => uint256)) private _allowedFragments;
+    mapping(address => mapping(address => uint256)) private _allowedUimara;
 
     // EIP-2612: permit – 712-signed approvals
     // https://eips.ethereum.org/EIPS/eip-2612
@@ -92,9 +92,9 @@ contract Uimara is ERC20Detailed, Ownable {
     }
 
     /**
-     * @dev Notifies Fragments contract about a new rebase cycle.
-     * @param supplyDelta The number of new fragment tokens to add into circulation via expansion.
-     * @return The total number of fragments after the supply adjustment.
+     * @dev Notifies Uimara contract about a new rebase cycle.
+     * @param supplyDelta The number of new Uimara tokens to add into circulation via expansion.
+     * @return The total number of Uimara after the supply adjustment.
      */
     function rebase(uint256 epoch, int256 supplyDelta)
         external
@@ -116,10 +116,10 @@ contract Uimara is ERC20Detailed, Ownable {
             _totalSupply = MAX_SUPPLY;
         }
 
-        _gonsPerFragment = TOTAL_GONS.div(_totalSupply);
+        _gonsPerUimara = TOTAL_GONS.div(_totalSupply);
 
-        // From this point forward, _gonsPerFragment is taken as the source of truth.
-        // We recalculate a new _totalSupply to be in agreement with the _gonsPerFragment
+        // From this point forward, _gonsPerUimara is taken as the source of truth.
+        // We recalculate a new _totalSupply to be in agreement with the _gonsPerUimara
         // conversion rate.
         // This means our applied supplyDelta can deviate from the requested supplyDelta,
         // but this deviation is guaranteed to be < (_totalSupply^2)/(TOTAL_GONS - _totalSupply).
@@ -127,7 +127,7 @@ contract Uimara is ERC20Detailed, Ownable {
         // In the case of _totalSupply <= MAX_UINT128 (our current supply cap), this
         // deviation is guaranteed to be < 1, so we can omit this step. If the supply cap is
         // ever increased, it must be re-included.
-        // _totalSupply = TOTAL_GONS.div(_gonsPerFragment)
+        // _totalSupply = TOTAL_GONS.div(_gonsPerUimara)
 
         emit LogRebase(epoch, _totalSupply);
         return _totalSupply;
@@ -140,15 +140,15 @@ contract Uimara is ERC20Detailed, Ownable {
         rebasePausedDeprecated = false;
         tokenPausedDeprecated = false;
 
-        _totalSupply = INITIAL_FRAGMENTS_SUPPLY;
+        _totalSupply = INITIAL_UIMARA_SUPPLY;
         _gonBalances[owner_] = TOTAL_GONS;
-        _gonsPerFragment = TOTAL_GONS.div(_totalSupply);
+        _gonsPerUimara = TOTAL_GONS.div(_totalSupply);
 
         emit Transfer(address(0x0), owner_, _totalSupply);
     }
 
     /**
-     * @return The total number of fragments.
+     * @return The total number of Uimara.
      */
     function totalSupply() external view override returns (uint256) {
         return _totalSupply;
@@ -159,7 +159,7 @@ contract Uimara is ERC20Detailed, Ownable {
      * @return The balance of the specified address.
      */
     function balanceOf(address who) external view override returns (uint256) {
-        return _gonBalances[who].div(_gonsPerFragment);
+        return _gonBalances[who].div(_gonsPerUimara);
     }
 
     /**
@@ -218,7 +218,7 @@ contract Uimara is ERC20Detailed, Ownable {
         validRecipient(to)
         returns (bool)
     {
-        uint256 gonValue = value.mul(_gonsPerFragment);
+        uint256 gonValue = value.mul(_gonsPerUimara);
 
         _gonBalances[msg.sender] = _gonBalances[msg.sender].sub(gonValue);
         _gonBalances[to] = _gonBalances[to].add(gonValue);
@@ -234,7 +234,7 @@ contract Uimara is ERC20Detailed, Ownable {
      */
     function transferAll(address to) external validRecipient(to) returns (bool) {
         uint256 gonValue = _gonBalances[msg.sender];
-        uint256 value = gonValue.div(_gonsPerFragment);
+        uint256 value = gonValue.div(_gonsPerUimara);
 
         delete _gonBalances[msg.sender];
         _gonBalances[to] = _gonBalances[to].add(gonValue);
@@ -250,7 +250,7 @@ contract Uimara is ERC20Detailed, Ownable {
      * @return The number of tokens still available for the spender.
      */
     function allowance(address owner_, address spender) external view override returns (uint256) {
-        return _allowedFragments[owner_][spender];
+        return _allowedUimara[owner_][spender];
     }
 
     /**
@@ -264,9 +264,9 @@ contract Uimara is ERC20Detailed, Ownable {
         address to,
         uint256 value
     ) external override validRecipient(to) returns (bool) {
-        _allowedFragments[from][msg.sender] = _allowedFragments[from][msg.sender].sub(value);
+        _allowedUimara[from][msg.sender] = _allowedUimara[from][msg.sender].sub(value);
 
-        uint256 gonValue = value.mul(_gonsPerFragment);
+        uint256 gonValue = value.mul(_gonsPerUimara);
         _gonBalances[from] = _gonBalances[from].sub(gonValue);
         _gonBalances[to] = _gonBalances[to].add(gonValue);
 
@@ -281,9 +281,9 @@ contract Uimara is ERC20Detailed, Ownable {
      */
     function transferAllFrom(address from, address to) external validRecipient(to) returns (bool) {
         uint256 gonValue = _gonBalances[from];
-        uint256 value = gonValue.div(_gonsPerFragment);
+        uint256 value = gonValue.div(_gonsPerUimara);
 
-        _allowedFragments[from][msg.sender] = _allowedFragments[from][msg.sender].sub(value);
+        _allowedUimara[from][msg.sender] = _allowedUimara[from][msg.sender].sub(value);
 
         delete _gonBalances[from];
         _gonBalances[to] = _gonBalances[to].add(gonValue);
@@ -304,7 +304,7 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param value The amount of tokens to be spent.
      */
     function approve(address spender, uint256 value) external override returns (bool) {
-        _allowedFragments[msg.sender][spender] = value;
+        _allowedUimara[msg.sender][spender] = value;
 
         emit Approval(msg.sender, spender, value);
         return true;
@@ -318,11 +318,11 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param addedValue The amount of tokens to increase the allowance by.
      */
     function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
-        _allowedFragments[msg.sender][spender] = _allowedFragments[msg.sender][spender].add(
+        _allowedUimara[msg.sender][spender] = _allowedUimara[msg.sender][spender].add(
             addedValue
         );
 
-        emit Approval(msg.sender, spender, _allowedFragments[msg.sender][spender]);
+        emit Approval(msg.sender, spender, _allowedUimara[msg.sender][spender]);
         return true;
     }
 
@@ -333,12 +333,12 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param subtractedValue The amount of tokens to decrease the allowance by.
      */
     function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool) {
-        uint256 oldValue = _allowedFragments[msg.sender][spender];
-        _allowedFragments[msg.sender][spender] = (subtractedValue >= oldValue)
+        uint256 oldValue = _allowedUimara[msg.sender][spender];
+        _allowedUimara[msg.sender][spender] = (subtractedValue >= oldValue)
             ? 0
             : oldValue.sub(subtractedValue);
 
-        emit Approval(msg.sender, spender, _allowedFragments[msg.sender][spender]);
+        emit Approval(msg.sender, spender, _allowedUimara[msg.sender][spender]);
         return true;
     }
 
@@ -373,7 +373,7 @@ contract Uimara is ERC20Detailed, Ownable {
 
         _nonces[owner] = ownerNonce.add(1);
 
-        _allowedFragments[owner][spender] = value;
+        _allowedUimara[owner][spender] = value;
         emit Approval(owner, spender, value);
     }
   
