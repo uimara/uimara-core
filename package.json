@@ -1,7 +1,13 @@
 {
   "name": "uimara",
   "version": "1.0.0",
-  "description": "",
+  "description": "Algorithmic Stablecoin pegged the Naira, project developed for 8 week Binance Masterclass",
+  "keywords": [
+    "ethereum",
+    "bsc",
+    "smart-contracts",
+    "solidity"
+  ],
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
