@@ -218,15 +218,15 @@ contract UimaraPolicy is Ownable {
     }
 
     /**
-     * @notice A multi-chain AMPL interface method. The Ampleforth monetary policy contract
+     * @notice A multi-chain IMT interface method. The Uimara monetary policy contract
      *         on the base-chain and XC-AmpleController contracts on the satellite-chains
      *         implement this method. It atomically returns two values:
      *         what the current contract believes to be,
-     *         the globalAmpleforthEpoch and globalAMPLSupply.
-     * @return globalAmpleforthEpoch The current epoch number.
-     * @return globalAMPLSupply The total supply at the current epoch.
+     *         the globalUimaraEpoch and globalIMTSupply.
+     * @return globalUimaraEpoch The current epoch number.
+     * @return globalIMTSupply The total supply at the current epoch.
      */
-    function globalAmpleforthEpochAndAMPLSupply() external view returns (uint256, uint256) {
+    function globalUimaraEpochAndIMTSupply() external view returns (uint256, uint256) {
         return (epoch, uFrags.totalSupply());
     }
 
