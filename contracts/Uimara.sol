@@ -3,42 +3,60 @@ pragma solidity 0.8.3;
 
 import "./lib/math/SafeMath.sol";
 import "./lib/math/SafeMathInt.sol";
+import "./lib/math/UInt256Lib.sol";
 
 import "./lib/Ownable.sol";
 import "./lib/ERC20Detailed.sol";
 
+interface IOracle {
+    function getData() external returns (uint256, bool);
+}
+
 contract Uimara is ERC20Detailed, Ownable {
 
-    // PLEASE READ BEFORE CHANGING ANY ACCOUNTING OR MATH
-    // Anytime there is division, there is a risk of numerical instability from rounding errors. In
-    // order to minimize this risk, we adhere to the following guidelines:
-    // 1) The conversion rate adopted is the number of gons that equals 1 Uimara.
-    //    The inverse rate must not be used--TOTAL_GONS is always the numerator and _totalSupply is
-    //    always the denominator. (i.e. If you want to convert gons to Uimara instead of
-    //    multiplying by the inverse rate, you should divide by the normal rate)
-    // 2) Gon balances converted into Uimara are always rounded down (truncated).
-    //
-    // We make the following guarantees:
-    // - If address 'A' transfers x Uimara to address 'B'. A's resulting external balance will
-    //   be decreased by precisely x Uimara, and B's external balance will be precisely
-    //   increased by x Uimara.
-    //
-    // We do not guarantee that the sum of all balances equals the result of calling totalSupply().
-    // This is because, for any conversion function 'f()' that has non-zero rounding error,
-    // f(x0) + f(x1) + ... + f(xn) is not always equal to f(x0 + x1 + ... xn).
     using SafeMath for uint256;
     using SafeMathInt for int256;
+    using UInt256Lib for uint256;
 
     event LogRebase(uint256 indexed epoch, uint256 totalSupply);
     event LogMonetaryPolicyUpdated(address monetaryPolicy);
 
-    // Used for authentication
-    address public monetaryPolicy;
+    // Provides the current CPI, as an 18 decimal fixed point number.
+    IOracle public cpiOracle;
 
-    modifier onlyMonetaryPolicy() {
-        require(msg.sender == monetaryPolicy);
-        _;
-    }
+    // Market oracle provides the token/USD exchange rate as an 18 decimal fixed point number.
+    // (eg) An oracle value of 1.5e18 it would mean 1 Uimara is trading for ₦1.50.
+    IOracle public marketOracle;
+
+    // CPI value at the time of launch, as an 18 decimal fixed point number.
+    uint256 private baseCpi;
+
+    // If the current exchange rate is within this fractional distance from the target, no supply
+    // update is performed. Fixed point number--same format as the rate.
+    // (ie) abs(rate - targetRate) / targetRate < deviationThreshold, then no supply change.
+    // DECIMALS Fixed point number.
+    uint256 public deviationThreshold;
+
+    // The rebase lag parameter, used to dampen the applied supply adjustment by 1 / rebaseLag
+    // Check setRebaseLag comments for more details.
+    // Natural number, no decimal places.
+    uint256 public rebaseLag;
+
+    // More than this much time must pass between rebase operations.
+    uint256 public minRebaseTimeIntervalSec;
+
+    // Block timestamp of last rebase operation
+    uint256 public lastRebaseTimestampSec;
+
+    // The rebase window begins this many seconds into the minRebaseTimeInterval period.
+    // For example if minRebaseTimeInterval is 24hrs, it represents the time of day in seconds.
+    uint256 public rebaseWindowOffsetSec;
+
+    // The length of the time window where a rebase operation is allowed to execute, in seconds.
+    uint256 public rebaseWindowLengthSec;
+
+    // The number of rebase cycles since inception
+    uint256 public epoch;
 
     bool private rebasePausedDeprecated;
     bool private tokenPausedDeprecated;
@@ -83,12 +101,58 @@ contract Uimara is ERC20Detailed, Ownable {
     // EIP-2612: keeps track of number of permits per address
     mapping(address => uint256) private _nonces;
 
-    /**
-     * @param monetaryPolicy_ The address of the monetary policy contract to use for authentication.
-     */
-    function setMonetaryPolicy(address monetaryPolicy_) external onlyOwner {
-        monetaryPolicy = monetaryPolicy_;
-        emit LogMonetaryPolicyUpdated(monetaryPolicy_);
+    uint256 private constant POLICY_DECIMALS = 18;
+
+    // Due to the expression in computeSupplyDelta(), MAX_RATE * MAX_SUPPLY must fit into an int256.
+    // Both are 18 decimals fixed point numbers.
+    uint256 private constant POLICY_MAX_RATE = 10**6 * 10**POLICY_DECIMALS;
+    // MAX_SUPPLY = MAX_INT256 / MAX_RATE
+    uint256 private constant POLICY_MAX_SUPPLY = uint256(type(int256).max) / POLICY_MAX_RATE;
+
+    function rebase() external {
+
+        // Prevent contract addresses from calling rebase function
+        require(msg.sender == tx.origin); // solhint-disable-line avoid-tx-origin
+        require(inRebaseWindow());
+        // This comparison also ensures there is no reentrancy.
+        require(lastRebaseTimestampSec.add(minRebaseTimeIntervalSec) < block.timestamp);
+
+        // Snap the rebase time to the start of this window.
+        lastRebaseTimestampSec = block
+        .timestamp
+        .sub(block.timestamp.mod(minRebaseTimeIntervalSec))
+        .add(rebaseWindowOffsetSec);
+
+        epoch = epoch.add(1);
+
+        uint256 cpi;
+        bool cpiValid;
+        (cpi, cpiValid) = cpiOracle.getData();
+        require(cpiValid);
+
+        uint256 targetRate = cpi.mul(10**POLICY_DECIMALS).div(baseCpi);
+
+        uint256 exchangeRate;
+        bool rateValid;
+        (exchangeRate, rateValid) = marketOracle.getData();
+        require(rateValid);
+
+        if (exchangeRate > POLICY_MAX_RATE) {
+            exchangeRate = POLICY_MAX_RATE;
+        }
+
+        int256 supplyDelta = computeSupplyDelta(exchangeRate, targetRate);
+
+        // Apply the Dampening factor.
+        supplyDelta = supplyDelta.div(rebaseLag.toInt256Safe());
+
+        if (supplyDelta > 0 && totalSupply().add(uint256(supplyDelta)) > POLICY_MAX_SUPPLY) {
+            supplyDelta = (POLICY_MAX_SUPPLY.sub(totalSupply())).toInt256Safe();
+        }
+
+        uint256 supplyAfterRebase = rebase(epoch, supplyDelta);
+        assert(supplyAfterRebase <= POLICY_MAX_SUPPLY);
+        // emit LogRebase(epoch, exchangeRate, cpi, supplyDelta, block.timestamp);
     }
 
     /**
@@ -97,8 +161,7 @@ contract Uimara is ERC20Detailed, Ownable {
      * @return The total number of Uimara after the supply adjustment.
      */
     function rebase(uint256 epoch, int256 supplyDelta)
-        external
-        onlyMonetaryPolicy
+        internal
         returns (uint256)
     {
         if (supplyDelta == 0) {
@@ -148,13 +211,23 @@ contract Uimara is ERC20Detailed, Ownable {
         _gonBalances[owner_] = TOTAL_GONS;
         _gonsPerUimara = TOTAL_GONS.div(_totalSupply);
 
+        deviationThreshold = 5 * 10**(POLICY_DECIMALS - 2);
+
+        rebaseLag = 30;
+        minRebaseTimeIntervalSec = 1 days;
+        rebaseWindowOffsetSec = 72000; // 8PM UTC
+        rebaseWindowLengthSec = 15 minutes;
+        lastRebaseTimestampSec = 0;
+        epoch = 0;
+        baseCpi = 100; // TODO: huh?
+
         emit Transfer(address(0x0), owner_, _totalSupply);
     }
 
     /**
      * @return The total number of Uimara.
      */
-    function totalSupply() external view override returns (uint256) {
+    function totalSupply() public view override returns (uint256) {
         return _totalSupply;
     }
 
@@ -379,6 +452,142 @@ contract Uimara is ERC20Detailed, Ownable {
 
         _allowedUimara[owner][spender] = value;
         emit Approval(owner, spender, value);
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+    // Rebase
+
+    /**
+     * @notice Sets the reference to the CPI oracle.
+     * @param cpiOracle_ The address of the cpi oracle contract.
+     */
+    function setCpiOracle(IOracle cpiOracle_) external onlyOwner {
+        cpiOracle = cpiOracle_;
+    }
+
+    /**
+     * @notice Sets the reference to the market oracle.
+     * @param marketOracle_ The address of the market oracle contract.
+     */
+    function setMarketOracle(IOracle marketOracle_) external onlyOwner {
+        marketOracle = marketOracle_;
+    }
+
+    /**
+     * @notice Sets the deviation threshold fraction. If the exchange rate given by the market
+     *         oracle is within this fractional distance from the targetRate, then no supply
+     *         modifications are made. DECIMALS fixed point number.
+     * @param deviationThreshold_ The new exchange rate threshold fraction.
+     */
+    function setDeviationThreshold(uint256 deviationThreshold_) external onlyOwner {
+        deviationThreshold = deviationThreshold_;
+    }
+
+    /**
+     * @notice Sets the rebase lag parameter.
+               It is used to dampen the applied supply adjustment by 1 / rebaseLag
+               If the rebase lag R, equals 1, the smallest value for R, then the full supply
+               correction is applied on each rebase cycle.
+               If it is greater than 1, then a correction of 1/R of is applied on each rebase.
+     * @param rebaseLag_ The new rebase lag parameter.
+     */
+    function setRebaseLag(uint256 rebaseLag_) external onlyOwner {
+        require(rebaseLag_ > 0);
+        rebaseLag = rebaseLag_;
+    }
+
+    /**
+     * @notice Sets the parameters which control the timing and frequency of
+     *         rebase operations.
+     *         a) the minimum time period that must elapse between rebase cycles.
+     *         b) the rebase window offset parameter.
+     *         c) the rebase window length parameter.
+     * @param minRebaseTimeIntervalSec_ More than this much time must pass between rebase
+     *        operations, in seconds.
+     * @param rebaseWindowOffsetSec_ The number of seconds from the beginning of
+              the rebase interval, where the rebase window begins.
+     * @param rebaseWindowLengthSec_ The length of the rebase window in seconds.
+     */
+    function setRebaseTimingParameters(
+        uint256 minRebaseTimeIntervalSec_,
+        uint256 rebaseWindowOffsetSec_,
+        uint256 rebaseWindowLengthSec_
+    ) external onlyOwner {
+        require(minRebaseTimeIntervalSec_ > 0);
+        require(rebaseWindowOffsetSec_ < minRebaseTimeIntervalSec_);
+
+        minRebaseTimeIntervalSec = minRebaseTimeIntervalSec_;
+        rebaseWindowOffsetSec = rebaseWindowOffsetSec_;
+        rebaseWindowLengthSec = rebaseWindowLengthSec_;
+    }
+
+    /**
+     * @notice A multi-chain IMT interface method. The Uimara monetary policy contract
+     *         on the base-chain and XC-AmpleController contracts on the satellite-chains
+     *         implement this method. It atomically returns two values:
+     *         what the current contract believes to be,
+     *         the globalUimaraEpoch and globalIMTSupply.
+     * @return globalUimaraEpoch The current epoch number.
+     * @return globalIMTSupply The total supply at the current epoch.
+     */
+    function globalUimaraEpochAndIMTSupply() external view returns (uint256, uint256) {
+        return (epoch, totalSupply());
+    }
+
+
+    /**
+     * @return If the latest block timestamp is within the rebase time window it, returns true.
+     *         Otherwise, returns false.
+     */
+    function inRebaseWindow() public view returns (bool) {
+        return (block.timestamp.mod(minRebaseTimeIntervalSec) >= rebaseWindowOffsetSec &&
+        block.timestamp.mod(minRebaseTimeIntervalSec) <
+        (rebaseWindowOffsetSec.add(rebaseWindowLengthSec)));
+    }
+
+    /**
+     * @return Computes the total supply adjustment in response to the exchange rate
+     *         and the targetRate.
+     */
+    function computeSupplyDelta(uint256 rate, uint256 targetRate) internal view returns (int256) {
+        if (withinDeviationThreshold(rate, targetRate)) {
+            return 0;
+        }
+
+        // supplyDelta = totalSupply * (rate - targetRate) / targetRate
+        int256 targetRateSigned = targetRate.toInt256Safe();
+        return
+        totalSupply().toInt256Safe().mul(rate.toInt256Safe().sub(targetRateSigned)).div(
+            targetRateSigned
+        );
+    }
+
+    /**
+     * @param rate The current exchange rate, an 18 decimal fixed point number.
+     * @param targetRate The target exchange rate, an 18 decimal fixed point number.
+     * @return If the rate is within the deviation threshold from the target rate, returns true.
+     *         Otherwise, returns false.
+     */
+    function withinDeviationThreshold(uint256 rate, uint256 targetRate)
+    internal
+    view
+    returns (bool)
+    {
+        uint256 absoluteDeviationThreshold = targetRate.mul(deviationThreshold).div(10**POLICY_DECIMALS);
+
+        return
+        (rate >= targetRate && rate.sub(targetRate) < absoluteDeviationThreshold) ||
+        (rate < targetRate && targetRate.sub(rate) < absoluteDeviationThreshold);
     }
   
 }
