@@ -62,4 +62,20 @@ library SafeMath {
         require(b != 0);
         return a % b;
     }
+	/**
+     * @dev Increments the passed in argument and returns the incremented value
+     * 
+     */
+	function incr(uint256 a) internal pure returns (uint256) {
+        
+        return a++;
+    }
+	/**
+     * @dev Decrements the passed in argument and returns the decremented value
+     * 
+     */
+	function decr(uint256 a) internal pure returns (uint256) {
+        
+        return a--;
+    }
 }
