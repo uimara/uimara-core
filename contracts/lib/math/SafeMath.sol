@@ -62,4 +62,34 @@ library SafeMath {
         require(b != 0);
         return a % b;
     }
+	/**
+     * @dev Increments the passed in argument and returns the incremented value
+     * 
+     */
+	function incr(uint256 a) internal pure returns (uint256) {
+        
+        return a++;
+    }
+	/**
+     * @dev Decrements the passed in argument and returns the decremented value
+     * 
+     */
+	function decr(uint256 a) internal pure returns (uint256) {
+        
+        return a--;
+    }
+	
+	/**
+     * @dev mean of the list of numbers passed in as argument and returns the mean value
+     * 
+     */
+	function mean(uint256[] listOfValues) internal pure returns(uint256){
+        uint256 len=listOfValues.length;
+        require(len>0);
+        uint256 sum=0;
+        for(uint8 i;i<len;i++){
+            sum+=listOfValues[i];
+        }
+        return uint256(sum/len);// inaccurate mean in case of decimals, to be fixed
+    }
 }
