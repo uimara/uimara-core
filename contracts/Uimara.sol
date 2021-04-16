@@ -13,7 +13,6 @@ interface IOracle {
 }
 
 contract Uimara is ERC20Detailed, Ownable {
-
     using SafeMath for uint256;
     using SafeMathInt for int256;
     using UInt256Lib for uint256;
@@ -73,7 +72,8 @@ contract Uimara is ERC20Detailed, Ownable {
 
     // TOTAL_GONS is a multiple of INITIAL_UIMARA_SUPPLY so that _gonsPerUimara is an integer.
     // Use the highest value that fits in a uint256 for max granularity.
-    uint256 private constant TOTAL_GONS = MAX_UINT256 - (MAX_UINT256 % INITIAL_UIMARA_SUPPLY);
+    uint256 private constant TOTAL_GONS =
+        MAX_UINT256 - (MAX_UINT256 % INITIAL_UIMARA_SUPPLY);
 
     // MAX_SUPPLY = maximum integer < (sqrt(4*TOTAL_GONS + 1) - 1) / 2
     uint256 private constant MAX_SUPPLY = type(uint128).max; // (2^128) - 1
@@ -107,21 +107,24 @@ contract Uimara is ERC20Detailed, Ownable {
     // Both are 18 decimals fixed point numbers.
     uint256 private constant POLICY_MAX_RATE = 10**6 * 10**POLICY_DECIMALS;
     // MAX_SUPPLY = MAX_INT256 / MAX_RATE
-    uint256 private constant POLICY_MAX_SUPPLY = uint256(type(int256).max) / POLICY_MAX_RATE;
+    uint256 private constant POLICY_MAX_SUPPLY =
+        uint256(type(int256).max) / POLICY_MAX_RATE;
 
     function rebase() external {
-
         // Prevent contract addresses from calling rebase function
         require(msg.sender == tx.origin); // solhint-disable-line avoid-tx-origin
         require(inRebaseWindow());
         // This comparison also ensures there is no reentrancy.
-        require(lastRebaseTimestampSec.add(minRebaseTimeIntervalSec) < block.timestamp);
+        require(
+            lastRebaseTimestampSec.add(minRebaseTimeIntervalSec) <
+                block.timestamp
+        );
 
         // Snap the rebase time to the start of this window.
         lastRebaseTimestampSec = block
-        .timestamp
-        .sub(block.timestamp.mod(minRebaseTimeIntervalSec))
-        .add(rebaseWindowOffsetSec);
+            .timestamp
+            .sub(block.timestamp.mod(minRebaseTimeIntervalSec))
+            .add(rebaseWindowOffsetSec);
 
         epoch = epoch.add(1);
 
@@ -146,7 +149,10 @@ contract Uimara is ERC20Detailed, Ownable {
         // Apply the Dampening factor.
         supplyDelta = supplyDelta.div(rebaseLag.toInt256Safe());
 
-        if (supplyDelta > 0 && totalSupply().add(uint256(supplyDelta)) > POLICY_MAX_SUPPLY) {
+        if (
+            supplyDelta > 0 &&
+            totalSupply().add(uint256(supplyDelta)) > POLICY_MAX_SUPPLY
+        ) {
             supplyDelta = (POLICY_MAX_SUPPLY.sub(totalSupply())).toInt256Safe();
         }
 
@@ -309,7 +315,11 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param to The address to transfer to.
      * @return True on success, false otherwise.
      */
-    function transferAll(address to) external validRecipient(to) returns (bool) {
+    function transferAll(address to)
+        external
+        validRecipient(to)
+        returns (bool)
+    {
         uint256 gonValue = _gonBalances[msg.sender];
         uint256 value = gonValue.div(_gonsPerUimara);
 
@@ -326,7 +336,12 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param spender The address which will spend the funds.
      * @return The number of tokens still available for the spender.
      */
-    function allowance(address owner_, address spender) external view override returns (uint256) {
+    function allowance(address owner_, address spender)
+        external
+        view
+        override
+        returns (uint256)
+    {
         return _allowedUimara[owner_][spender];
     }
 
@@ -341,7 +356,9 @@ contract Uimara is ERC20Detailed, Ownable {
         address to,
         uint256 value
     ) external override validRecipient(to) returns (bool) {
-        _allowedUimara[from][msg.sender] = _allowedUimara[from][msg.sender].sub(value);
+        _allowedUimara[from][msg.sender] = _allowedUimara[from][msg.sender].sub(
+            value
+        );
 
         uint256 gonValue = value.mul(_gonsPerUimara);
         _gonBalances[from] = _gonBalances[from].sub(gonValue);
@@ -356,11 +373,17 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param from The address you want to send tokens from.
      * @param to The address you want to transfer to.
      */
-    function transferAllFrom(address from, address to) external validRecipient(to) returns (bool) {
+    function transferAllFrom(address from, address to)
+        external
+        validRecipient(to)
+        returns (bool)
+    {
         uint256 gonValue = _gonBalances[from];
         uint256 value = gonValue.div(_gonsPerUimara);
 
-        _allowedUimara[from][msg.sender] = _allowedUimara[from][msg.sender].sub(value);
+        _allowedUimara[from][msg.sender] = _allowedUimara[from][msg.sender].sub(
+            value
+        );
 
         delete _gonBalances[from];
         _gonBalances[to] = _gonBalances[to].add(gonValue);
@@ -380,7 +403,11 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param spender The address which will spend the funds.
      * @param value The amount of tokens to be spent.
      */
-    function approve(address spender, uint256 value) external override returns (bool) {
+    function approve(address spender, uint256 value)
+        external
+        override
+        returns (bool)
+    {
         _allowedUimara[msg.sender][spender] = value;
 
         emit Approval(msg.sender, spender, value);
@@ -394,10 +421,14 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param spender The address which will spend the funds.
      * @param addedValue The amount of tokens to increase the allowance by.
      */
-    function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
-        _allowedUimara[msg.sender][spender] = _allowedUimara[msg.sender][spender].add(
-            addedValue
-        );
+    function increaseAllowance(address spender, uint256 addedValue)
+        public
+        returns (bool)
+    {
+        _allowedUimara[msg.sender][spender] = _allowedUimara[msg.sender][
+            spender
+        ]
+            .add(addedValue);
 
         emit Approval(msg.sender, spender, _allowedUimara[msg.sender][spender]);
         return true;
@@ -409,7 +440,10 @@ contract Uimara is ERC20Detailed, Ownable {
      * @param spender The address which will spend the funds.
      * @param subtractedValue The amount of tokens to decrease the allowance by.
      */
-    function decreaseAllowance(address spender, uint256 subtractedValue) external returns (bool) {
+    function decreaseAllowance(address spender, uint256 subtractedValue)
+        external
+        returns (bool)
+    {
         uint256 oldValue = _allowedUimara[msg.sender][spender];
         _allowedUimara[msg.sender][spender] = (subtractedValue >= oldValue)
             ? 0
@@ -442,9 +476,24 @@ contract Uimara is ERC20Detailed, Ownable {
 
         uint256 ownerNonce = _nonces[owner];
         bytes32 permitDataDigest =
-            keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, value, ownerNonce, deadline));
+            keccak256(
+                abi.encode(
+                    PERMIT_TYPEHASH,
+                    owner,
+                    spender,
+                    value,
+                    ownerNonce,
+                    deadline
+                )
+            );
         bytes32 digest =
-            keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), permitDataDigest));
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    DOMAIN_SEPARATOR(),
+                    permitDataDigest
+                )
+            );
 
         require(owner == ecrecover(digest, v, r, s));
 
@@ -453,17 +502,6 @@ contract Uimara is ERC20Detailed, Ownable {
         _allowedUimara[owner][spender] = value;
         emit Approval(owner, spender, value);
     }
-
-
-
-
-
-
-
-
-
-
-
 
     // Rebase
 
@@ -489,7 +527,10 @@ contract Uimara is ERC20Detailed, Ownable {
      *         modifications are made. DECIMALS fixed point number.
      * @param deviationThreshold_ The new exchange rate threshold fraction.
      */
-    function setDeviationThreshold(uint256 deviationThreshold_) external onlyOwner {
+    function setDeviationThreshold(uint256 deviationThreshold_)
+        external
+        onlyOwner
+    {
         deviationThreshold = deviationThreshold_;
     }
 
@@ -540,26 +581,34 @@ contract Uimara is ERC20Detailed, Ownable {
      * @return globalUimaraEpoch The current epoch number.
      * @return globalIMTSupply The total supply at the current epoch.
      */
-    function globalUimaraEpochAndIMTSupply() external view returns (uint256, uint256) {
+    function globalUimaraEpochAndIMTSupply()
+        external
+        view
+        returns (uint256, uint256)
+    {
         return (epoch, totalSupply());
     }
-
 
     /**
      * @return If the latest block timestamp is within the rebase time window it, returns true.
      *         Otherwise, returns false.
      */
     function inRebaseWindow() public view returns (bool) {
-        return (block.timestamp.mod(minRebaseTimeIntervalSec) >= rebaseWindowOffsetSec &&
-        block.timestamp.mod(minRebaseTimeIntervalSec) <
-        (rebaseWindowOffsetSec.add(rebaseWindowLengthSec)));
+        return (block.timestamp.mod(minRebaseTimeIntervalSec) >=
+            rebaseWindowOffsetSec &&
+            block.timestamp.mod(minRebaseTimeIntervalSec) <
+            (rebaseWindowOffsetSec.add(rebaseWindowLengthSec)));
     }
 
     /**
      * @return Computes the total supply adjustment in response to the exchange rate
      *         and the targetRate.
      */
-    function computeSupplyDelta(uint256 rate, uint256 targetRate) internal view returns (int256) {
+    function computeSupplyDelta(uint256 rate, uint256 targetRate)
+        internal
+        view
+        returns (int256)
+    {
         if (withinDeviationThreshold(rate, targetRate)) {
             return 0;
         }
@@ -567,9 +616,10 @@ contract Uimara is ERC20Detailed, Ownable {
         // supplyDelta = totalSupply * (rate - targetRate) / targetRate
         int256 targetRateSigned = targetRate.toInt256Safe();
         return
-        totalSupply().toInt256Safe().mul(rate.toInt256Safe().sub(targetRateSigned)).div(
-            targetRateSigned
-        );
+            totalSupply()
+                .toInt256Safe()
+                .mul(rate.toInt256Safe().sub(targetRateSigned))
+                .div(targetRateSigned);
     }
 
     /**
@@ -579,15 +629,17 @@ contract Uimara is ERC20Detailed, Ownable {
      *         Otherwise, returns false.
      */
     function withinDeviationThreshold(uint256 rate, uint256 targetRate)
-    internal
-    view
-    returns (bool)
+        internal
+        view
+        returns (bool)
     {
-        uint256 absoluteDeviationThreshold = targetRate.mul(deviationThreshold).div(10**POLICY_DECIMALS);
+        uint256 absoluteDeviationThreshold =
+            targetRate.mul(deviationThreshold).div(10**POLICY_DECIMALS);
 
         return
-        (rate >= targetRate && rate.sub(targetRate) < absoluteDeviationThreshold) ||
-        (rate < targetRate && targetRate.sub(rate) < absoluteDeviationThreshold);
+            (rate >= targetRate &&
+                rate.sub(targetRate) < absoluteDeviationThreshold) ||
+            (rate < targetRate &&
+                targetRate.sub(rate) < absoluteDeviationThreshold);
     }
-  
 }
